@@ -238,5 +238,206 @@ describe('Match Routes', () => {
       expect(metadata.grandparentGuid).toBeDefined();
       expect(metadata.grandparentType).toBe('show');
     });
+
+    it('should return English title for Cowboy Bebop (TVDB ID 76885)', async () => {
+      // This test ensures that anime/foreign shows return English titles
+      // Cowboy Bebop is a Japanese anime with TVDB ID 76885
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 2,
+          guid: 'tvdb://76885', // Cowboy Bebop TVDB ID
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.MediaContainer.size).toBeGreaterThan(0);
+
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      // Title should be "Cowboy Bebop" in English characters, not Japanese
+      expect(metadata.title).toBe('Cowboy Bebop');
+      // Should not contain Japanese characters
+      expect(metadata.title).not.toMatch(/[\u3040-\u30ff\u4e00-\u9fff]/);
+    });
+
+    it('should return English overview for foreign shows', async () => {
+      // Test that overviews are also in English
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 2,
+          guid: 'tvdb://76885', // Cowboy Bebop
+        });
+
+      expect(response.status).toBe(200);
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      // If overview exists, it should be in English (not contain primarily Japanese characters)
+      if (metadata.summary) {
+        expect(metadata.summary).not.toMatch(/^[\u3040-\u30ff\u4e00-\u9fff]+$/);
+      }
+    });
+
+    it('should return English title for Cowboy Bebop S01E01 (Session #2: Stray Dog Strut)', async () => {
+      // This test ensures that episode titles are returned in English
+      // Cowboy Bebop (1998) Season 1, Episode 1 should be "Session #2: Stray Dog Strut"
+      // Using year in title to ensure we match the 1998 series, not the 2021 remake
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 4, // episode
+          grandparentTitle: 'Cowboy Bebop (1998)', // Year ensures we get the 1998 animated series
+          parentIndex: 1, // Season 1
+          index: 1, // Episode 1
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.MediaContainer.size).toBeGreaterThan(0);
+
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      // Title should contain "Stray Dog Strut" in English
+      expect(metadata.title).toContain('Stray Dog Strut');
+      // Should not contain Japanese characters
+      expect(metadata.title).not.toMatch(/[\u3040-\u30ff\u4e00-\u9fff]/);
+    });
+
+    it('should return English overview for Cowboy Bebop episodes', async () => {
+      // Test that episode overviews are also in English
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 4,
+          grandparentTitle: 'Cowboy Bebop (1998)',
+          parentIndex: 1,
+          index: 1,
+        });
+
+      expect(response.status).toBe(200);
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      // If overview exists, it should be in English
+      if (metadata.summary) {
+        expect(metadata.summary).not.toMatch(/^[\u3040-\u30ff\u4e00-\u9fff]+$/);
+        // Should contain recognizable English words
+        expect(metadata.summary.length).toBeGreaterThan(10);
+      }
+    });
+
+    it('should extract year from title and match correct series - "Cowboy Bebop (1998)"', async () => {
+      // Cowboy Bebop has two versions:
+      // - 1998 animated series (TVDB ID: 76885)
+      // - 2021 live-action series (different TVDB ID)
+      // This test ensures that "Cowboy Bebop (1998)" matches the 1998 version
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 2,
+          title: 'Cowboy Bebop (1998)', // Year in parentheses should be extracted
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.MediaContainer.size).toBeGreaterThan(0);
+
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      // Should match the 1998 version
+      expect(metadata.title).toBe('Cowboy Bebop');
+      expect(metadata.year).toBe(1998);
+      // The GUID should reference the original 1998 series (TVDB ID 76885)
+      expect(metadata.ratingKey).toBe('tvdb-show-76885');
+    });
+
+    it('should extract year from title with brackets - "Cowboy Bebop [1998]"', async () => {
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 2,
+          title: 'Cowboy Bebop [1998]', // Year in brackets should also work
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.MediaContainer.size).toBeGreaterThan(0);
+
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      expect(metadata.title).toBe('Cowboy Bebop');
+      expect(metadata.year).toBe(1998);
+    });
+
+    it('should extract year from title with dash - "Cowboy Bebop - 1998"', async () => {
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 2,
+          title: 'Cowboy Bebop - 1998', // Year after dash should also work
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.MediaContainer.size).toBeGreaterThan(0);
+
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      expect(metadata.title).toBe('Cowboy Bebop');
+      expect(metadata.year).toBe(1998);
+    });
+
+    it('should prefer explicitly provided year over extracted year', async () => {
+      // If both year and title-with-year are provided, explicit year wins
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 2,
+          title: 'Cowboy Bebop (2021)', // Title says 2021
+          year: 1998, // But explicit year says 1998
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.MediaContainer.size).toBeGreaterThan(0);
+
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      // Should match 1998 version because explicit year takes precedence
+      expect(metadata.year).toBe(1998);
+    });
+
+    it('should extract year from parentTitle for season matching', async () => {
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 3,
+          parentTitle: 'Cowboy Bebop (1998)',
+          index: 1,
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.MediaContainer.size).toBeGreaterThan(0);
+
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      // Should match the 1998 series
+      expect(metadata.parentTitle).toBe('Cowboy Bebop');
+      expect(metadata.parentRatingKey).toBe('tvdb-show-76885');
+    });
+
+    it('should extract year from grandparentTitle for episode matching', async () => {
+      const response = await request(app)
+        .post('/tv/library/metadata/matches')
+        .send({
+          type: 4,
+          grandparentTitle: 'Cowboy Bebop (1998)',
+          parentIndex: 1,
+          index: 1,
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.MediaContainer.size).toBeGreaterThan(0);
+
+      const metadata = response.body.MediaContainer.Metadata[0];
+
+      // Should match the 1998 series
+      expect(metadata.grandparentTitle).toBe('Cowboy Bebop');
+      expect(metadata.grandparentRatingKey).toBe('tvdb-show-76885');
+    });
   });
 });

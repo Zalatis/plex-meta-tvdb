@@ -25,6 +25,7 @@ export class TVDBClient {
   private baseURL = 'https://api4.thetvdb.com/v4';
   private token: string | null = null;
   private tokenExpiry: Date | null = null;
+  private defaultLanguage = 'eng'; // ISO 639-2 code for English
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
@@ -32,7 +33,7 @@ export class TVDBClient {
       baseURL: this.baseURL,
     });
 
-    // Add request interceptor for logging and token
+    // Add request interceptor for logging, token, and language
     this.client.interceptors.request.use(
       async (config) => {
         // Ensure we have a valid token (except for login endpoint)
@@ -40,6 +41,9 @@ export class TVDBClient {
           await this.ensureToken();
           config.headers.Authorization = `Bearer ${this.token}`;
         }
+
+        // Set Accept-Language header to prefer English content
+        config.headers['Accept-Language'] = this.defaultLanguage;
 
         const url = `${config.baseURL}${config.url}`;
         logger.info(`TVDB API Request: ${config.method?.toUpperCase()} ${url}`);
@@ -93,6 +97,7 @@ export class TVDBClient {
 
   /**
    * Search for TV series
+   * Filters results to prefer entries with English translations
    */
   async searchSeries(query: string, options?: {
     year?: number;
@@ -108,15 +113,33 @@ export class TVDBClient {
     }
 
     const response = await this.client.get<TVDBSearchResponse>('/search', { params });
-    return response.data.data || [];
+    const results = response.data.data || [];
+
+    // Filter to prioritize results that have English translations
+    // Sort results: English-named entries first, then by default order
+    const sortedResults = results.sort((a, b) => {
+      const aHasEnglish = a.primary_language === 'eng' ||
+                          (a.translations && a.translations['eng']) ||
+                          (a.overviews && a.overviews['eng']);
+      const bHasEnglish = b.primary_language === 'eng' ||
+                          (b.translations && b.translations['eng']) ||
+                          (b.overviews && b.overviews['eng']);
+
+      if (aHasEnglish && !bHasEnglish) return -1;
+      if (!aHasEnglish && bHasEnglish) return 1;
+      return 0;
+    });
+
+    return sortedResults;
   }
 
   /**
-   * Get series details
+   * Get series details with English translations applied
    * @param seriesId - TVDB series ID
    */
   async getSeriesDetails(seriesId: number, options?: {
     meta?: string; // 'translations', 'episodes', etc.
+    language?: string; // Language code (default: 'eng')
   }): Promise<TVDBSeriesExtended> {
     const params: Record<string, string> = {};
     if (options?.meta) {
@@ -127,7 +150,20 @@ export class TVDBClient {
       `/series/${seriesId}/extended`,
       { params }
     );
-    return response.data.data;
+
+    const series = response.data.data;
+    const language = options?.language || this.defaultLanguage;
+
+    // Apply English translation to ensure English name and overview
+    const translation = await this.getSeriesTranslation(seriesId, language);
+    if (translation.name) {
+      series.name = translation.name;
+    }
+    if (translation.overview) {
+      series.overview = translation.overview;
+    }
+
+    return series;
   }
 
   /**
@@ -168,18 +204,37 @@ export class TVDBClient {
   }
 
   /**
-   * Get season details
+   * Get season details with English translations applied to episodes
    * @param seasonId - TVDB season ID
    */
   async getSeasonDetails(seasonId: number): Promise<TVDBSeasonExtended> {
     const response = await this.client.get<TVDBResponse<TVDBSeasonExtended>>(
       `/seasons/${seasonId}/extended`
     );
-    return response.data.data;
+
+    const season = response.data.data;
+
+    // Apply English translations to episodes
+    if (season.episodes && season.episodes.length > 0) {
+      const translationPromises = season.episodes.map(async (episode) => {
+        const translation = await this.getEpisodeTranslation(episode.id, this.defaultLanguage);
+        if (translation.name) {
+          episode.name = translation.name;
+        }
+        if (translation.overview) {
+          episode.overview = translation.overview;
+        }
+        return episode;
+      });
+
+      season.episodes = await Promise.all(translationPromises);
+    }
+
+    return season;
   }
 
   /**
-   * Get all episodes for a series
+   * Get all episodes for a series with English translations applied
    * @param seriesId - TVDB series ID
    * @param seasonType - Season type (default, dvd, absolute, etc.)
    */
@@ -187,6 +242,7 @@ export class TVDBClient {
     seasonType?: string;
     season?: number;
     page?: number;
+    applyTranslations?: boolean;
   }): Promise<{ episodes: TVDBEpisode[]; series: TVDBSeries }> {
     const seasonType = options?.seasonType || 'default';
     const params: Record<string, string> = {};
@@ -202,18 +258,50 @@ export class TVDBClient {
       `/series/${seriesId}/episodes/${seasonType}`,
       { params }
     );
-    return response.data.data;
+
+    const result = response.data.data;
+
+    // Apply English translations to episodes if requested (default: true)
+    if (options?.applyTranslations !== false && result.episodes && result.episodes.length > 0) {
+      // Fetch English translations for all episodes in parallel
+      const translationPromises = result.episodes.map(async (episode) => {
+        const translation = await this.getEpisodeTranslation(episode.id, this.defaultLanguage);
+        if (translation.name) {
+          episode.name = translation.name;
+        }
+        if (translation.overview) {
+          episode.overview = translation.overview;
+        }
+        return episode;
+      });
+
+      result.episodes = await Promise.all(translationPromises);
+    }
+
+    return result;
   }
 
   /**
-   * Get episode details
+   * Get episode details with English translations applied
    * @param episodeId - TVDB episode ID
    */
   async getEpisodeDetails(episodeId: number): Promise<TVDBEpisodeExtended> {
     const response = await this.client.get<TVDBResponse<TVDBEpisodeExtended>>(
       `/episodes/${episodeId}/extended`
     );
-    return response.data.data;
+
+    const episode = response.data.data;
+
+    // Apply English translation to ensure English name and overview
+    const translation = await this.getEpisodeTranslation(episodeId, this.defaultLanguage);
+    if (translation.name) {
+      episode.name = translation.name;
+    }
+    if (translation.overview) {
+      episode.overview = translation.overview;
+    }
+
+    return episode;
   }
 
   /**
@@ -246,7 +334,7 @@ export class TVDBClient {
     // Filter results to find matching remote ID
     const results = response.data.data || [];
     if (source === 'imdb') {
-      return results.filter(r => 
+      return results.filter(r =>
         r.remote_ids?.some(rid => rid.id === remoteId && rid.sourceName === 'IMDB')
       );
     }
@@ -258,24 +346,24 @@ export class TVDBClient {
    */
   async getSeasonByNumber(seriesId: number, seasonNumber: number, seasonType: string = 'default'): Promise<TVDBSeason | null> {
     const seriesDetails = await this.getSeriesDetails(seriesId);
-    
+
     // First try to find by exact type match
     let season = seriesDetails.seasons?.find(
       s => s.number === seasonNumber && s.type.type === seasonType
     );
-    
+
     // If not found and using 'default', try 'official' (TVDB's standard type)
     if (!season && seasonType === 'default') {
       season = seriesDetails.seasons?.find(
         s => s.number === seasonNumber && s.type.type === 'official'
       );
     }
-    
+
     // Last resort: find any season with matching number
     if (!season) {
       season = seriesDetails.seasons?.find(s => s.number === seasonNumber);
     }
-    
+
     return season || null;
   }
 

@@ -59,6 +59,44 @@ export class MatchService {
   }
 
   /**
+   * Extract year from title if present
+   * Matches patterns like "Title (1998)", "Title [1998]", "Title - 1998"
+   * Returns the cleaned title and extracted year
+   */
+  private parseYearFromTitle(title: string): { cleanTitle: string; year: number | undefined } {
+    // Match year in parentheses: "Cowboy Bebop (1998)"
+    const parenMatch = title.match(/^(.+?)\s*\((\d{4})\)\s*$/);
+    if (parenMatch) {
+      const year = parseInt(parenMatch[2], 10);
+      // Only accept reasonable years (1900-2100)
+      if (year >= 1900 && year <= 2100) {
+        return { cleanTitle: parenMatch[1].trim(), year };
+      }
+    }
+
+    // Match year in brackets: "Cowboy Bebop [1998]"
+    const bracketMatch = title.match(/^(.+?)\s*\[(\d{4})\]\s*$/);
+    if (bracketMatch) {
+      const year = parseInt(bracketMatch[2], 10);
+      if (year >= 1900 && year <= 2100) {
+        return { cleanTitle: bracketMatch[1].trim(), year };
+      }
+    }
+
+    // Match year after dash: "Cowboy Bebop - 1998"
+    const dashMatch = title.match(/^(.+?)\s*-\s*(\d{4})\s*$/);
+    if (dashMatch) {
+      const year = parseInt(dashMatch[2], 10);
+      if (year >= 1900 && year <= 2100) {
+        return { cleanTitle: dashMatch[1].trim(), year };
+      }
+    }
+
+    // No year found
+    return { cleanTitle: title, year: undefined };
+  }
+
+  /**
    * Match TV Show
    */
   private async matchShow(
@@ -118,8 +156,14 @@ export class MatchService {
 
     // If no match by GUID, search by title
     if (matches.length === 0 && request.title) {
-      const searchResults = await this.tvdbClient.searchSeries(request.title, {
-        year: request.year,
+      // Extract year from title if present (e.g., "Cowboy Bebop (1998)")
+      const { cleanTitle, year: extractedYear } = this.parseYearFromTitle(request.title);
+      
+      // Use explicitly provided year, or fall back to extracted year from title
+      const searchYear = request.year || extractedYear;
+      
+      const searchResults = await this.tvdbClient.searchSeries(cleanTitle, {
+        year: searchYear,
       });
 
       // Get detailed info for the top result(s)
@@ -173,9 +217,15 @@ export class MatchService {
       };
     }
 
+    // Extract year from parentTitle if present (e.g., "Cowboy Bebop (1998)")
+    const { cleanTitle: cleanParentTitle, year: extractedYear } = this.parseYearFromTitle(request.parentTitle);
+    
+    // Use explicitly provided year, or fall back to extracted year from title
+    const searchYear = request.year || extractedYear;
+    
     // First, find the TV show
-    const searchResults = await this.tvdbClient.searchSeries(request.parentTitle, {
-      year: request.year,
+    const searchResults = await this.tvdbClient.searchSeries(cleanParentTitle, {
+      year: searchYear,
     });
 
     if (searchResults.length === 0) {
@@ -245,9 +295,15 @@ export class MatchService {
       throw new Error('Episode matching requires either (index + parentIndex) or date parameter');
     }
 
+    // Extract year from grandparentTitle if present (e.g., "Cowboy Bebop (1998)")
+    const { cleanTitle: cleanGrandparentTitle, year: extractedYear } = this.parseYearFromTitle(request.grandparentTitle);
+    
+    // Use explicitly provided year, or fall back to extracted year from title
+    const searchYear = request.year || extractedYear;
+    
     // First, find the TV show
-    const searchResults = await this.tvdbClient.searchSeries(request.grandparentTitle, {
-      year: request.year,
+    const searchResults = await this.tvdbClient.searchSeries(cleanGrandparentTitle, {
+      year: searchYear,
     });
 
     if (searchResults.length === 0) {
