@@ -2,9 +2,9 @@ name: docker
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "dev"]
   schedule:
-    - cron: "23 3 * * *"  # daily
+    - cron: "23 3 * * *" # daily
   workflow_dispatch:
 
 permissions:
@@ -25,9 +25,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # GHCR/docker image names must be lowercase; github.repository_owner can be mixed-case.
-      - name: Set lowercase owner
-        run: echo "OWNER_LC=${OWNER,,}" >> $GITHUB_ENV
+      - name: Set lowercase owner + tag
+        run: |
+          echo "OWNER_LC=${OWNER,,}" >> $GITHUB_ENV
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "IMAGE_TAG=latest" >> $GITHUB_ENV
+          else
+            echo "IMAGE_TAG=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+          fi
         env:
           OWNER: ${{ github.repository_owner }}
 
@@ -36,4 +41,4 @@ jobs:
           context: .
           push: true
           tags: |
-            ghcr.io/${{ env.OWNER_LC }}/plex-meta-tvdb:latest
+            ghcr.io/${{ env.OWNER_LC }}/plex-meta-tvdb:${{ env.IMAGE_TAG }}
