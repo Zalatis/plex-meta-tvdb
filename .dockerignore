@@ -1,0 +1,35 @@
+# Dependencies (install inside image)
+node_modules
+**/node_modules
+
+# Build outputs (you build in-container)
+dist
+build
+coverage
+
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Docker / compose files not needed in build context
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.log
+
+# Local env / secrets (you use env_file at runtime)
+.env
+.env.*
+!.env.example
+*.local
+
+# IDE / OS cruft
+.vscode
+.idea
+.DS_Store
