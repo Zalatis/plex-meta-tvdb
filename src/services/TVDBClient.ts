@@ -114,6 +114,7 @@ export class TVDBClient {
 
     const response = await this.client.get<TVDBSearchResponse>('/search', { params });
     const results = response.data.data || [];
+    const lang = this.defaultLanguage;
 
     // Filter to prioritize results that have English translations
     // Sort results: English-named entries first, then by default order
