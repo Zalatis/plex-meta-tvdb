@@ -25,7 +25,7 @@ export class TVDBClient {
   private baseURL = 'https://api4.thetvdb.com/v4';
   private token: string | null = null;
   private tokenExpiry: Date | null = null;
-  private defaultLanguage = 'eng'; // ISO 639-2 code for English
+  private defaultLanguage = (process.env.TVDB_LANGUAGE || 'eng').toLowerCase(); // ISO 639-2 code for English
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
@@ -118,12 +118,12 @@ export class TVDBClient {
     // Filter to prioritize results that have English translations
     // Sort results: English-named entries first, then by default order
     const sortedResults = results.sort((a, b) => {
-      const aHasEnglish = a.primary_language === 'eng' ||
-                          (a.translations && a.translations['eng']) ||
-                          (a.overviews && a.overviews['eng']);
-      const bHasEnglish = b.primary_language === 'eng' ||
-                          (b.translations && b.translations['eng']) ||
-                          (b.overviews && b.overviews['eng']);
+      const aHasEnglish = a.primary_language === lang ||
+                          (a.translations && a.translations[lang]) ||
+                          (a.overviews && a.overviews[lang]);
+      const bHasEnglish = b.primary_language === lang ||
+                          (b.translations && b.translations[lang]) ||
+                          (b.overviews && b.overviews[lang]);
 
       if (aHasEnglish && !bHasEnglish) return -1;
       if (!aHasEnglish && bHasEnglish) return 1;
