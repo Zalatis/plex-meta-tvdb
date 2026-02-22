@@ -4,28 +4,81 @@ on:
   push:
     branches: ["main", "dev"]
   schedule:
-    - cron: "23 3 * * *" # daily
+    - cron: "23 3 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
+  actions: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip if no changes since last successful scheduled run
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          WORKFLOW_FILE: docker.yml
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Only gate schedule runs; push should always build (your choice).
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Get last successful *schedule* run on this branch, and read its headSha.
+          last_sha="$(
+            gh api "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
+              -f branch="${BRANCH}" \
+              -f status="success" \
+              -f event="schedule" \
+              -f per_page=1 \
+              --jq '.workflow_runs[0].head_sha // empty'
+          )"
+
+          # If there was never a successful scheduled run, run now.
+          if [ -z "$last_sha" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # If HEAD == last scheduled successful sha, nothing changed.
+          if [ "$last_sha" = "${{ github.sha }}" ]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # If any file changed since that SHA, run.
+          if git diff --name-only "$last_sha" "${{ github.sha }}" | grep -q .; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: docker/setup-buildx-action@v3
+        if: steps.gate.outputs.should_run == 'true'
 
       - uses: docker/login-action@v3
+        if: steps.gate.outputs.should_run == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set lowercase owner + tag
+        if: steps.gate.outputs.should_run == 'true'
         run: |
           echo "OWNER_LC=${OWNER,,}" >> $GITHUB_ENV
           if [ "${GITHUB_REF_NAME}" = "main" ]; then
@@ -37,6 +90,7 @@ jobs:
           OWNER: ${{ github.repository_owner }}
 
       - uses: docker/build-push-action@v6
+        if: steps.gate.outputs.should_run == 'true'
         with:
           context: .
           push: true
