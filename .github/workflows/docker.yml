@@ -4,13 +4,13 @@ on:
   push:
     branches: ["main", "dev"]
   schedule:
-    - cron: "23 3 * * *" # daily
+    - cron: "23 3 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
-  actions: read  # required to list workflow runs and read head_sha via API [web:29]
+  actions: read
 
 jobs:
   build:
@@ -21,13 +21,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Decide whether to run (schedule: only if repo changed since last successful schedule)
+      - name: Decide whether to run (schedule only if repo changed since last successful schedule)
         id: gate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ github.ref_name }}
-          WORKFLOW_FILE: docker.yml # <-- your workflow filename in .github/workflows/
+          WORKFLOW_FILE: docker.yml
         shell: bash
         run: |
           set -euo pipefail
@@ -69,7 +69,7 @@ jobs:
 
       - name: No changes; exiting
         if: steps.gate.outputs.should_run != 'true'
-        run: echo "No changes since last successful scheduled run; skipping build."
+        run: 'echo "No changes since last successful scheduled run: skipping build."'
 
       - uses: docker/setup-buildx-action@v3
         if: steps.gate.outputs.should_run == 'true'
