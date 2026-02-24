@@ -40,13 +40,11 @@ jobs:
 
           # Get last successful *scheduled* run on this branch and read its head SHA
           last_sha="$(
-            gh api "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs" \
-              -f branch="${BRANCH}" \
-              -f status="success" \
-              -f event="schedule" \
-              -f per_page=1 \
+            gh api \
+              "repos/${REPO}/actions/workflows/${WORKFLOW_FILE}/runs?branch=${BRANCH}&status=success&event=schedule&per_page=1" \
               --jq '.workflow_runs[0].head_sha // empty'
           )"
+
 
           # If there was never a successful scheduled run, run now
           if [ -z "$last_sha" ]; then
