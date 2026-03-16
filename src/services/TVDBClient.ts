@@ -27,6 +27,29 @@ export class TVDBClient {
   private tokenExpiry: Date | null = null;
   private defaultLanguage = (process.env.TVDB_LANGUAGE || 'eng').toLowerCase(); // ISO 639-2 code for English
 
+  /**
+   * Apply simple locale-specific adjustments to season names.
+   * Currently used to replace the English word "Season" with the French "Saison"
+   * when the configured TVDB language is French.
+   */
+  private localizeSeasonName(name: string | undefined | null): string {
+    if (!name) return '';
+
+    const lang = this.defaultLanguage;
+    const isFrench =
+      lang === 'fra' ||
+      lang === 'fre' ||
+      lang === 'fr' ||
+      lang.startsWith('fr-');
+
+    if (!isFrench) {
+      return name;
+    }
+
+    // Replace standalone "Season" (case-insensitive) with "Saison"
+    return name.replace(/\bSeason\b/gi, 'Saison');
+  }
+
   constructor(apiKey: string) {
     this.apiKey = apiKey;
     this.client = axios.create({
@@ -214,6 +237,9 @@ export class TVDBClient {
     );
 
     const season = response.data.data;
+
+    // Apply locale-specific season name adjustment (e.g., "Season" -> "Saison" in French)
+    season.name = this.localizeSeasonName(season.name);
 
     // Apply English translations to episodes
     if (season.episodes && season.episodes.length > 0) {
