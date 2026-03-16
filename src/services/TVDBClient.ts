@@ -37,10 +37,7 @@ export class TVDBClient {
 
     const lang = this.defaultLanguage;
     const isFrench =
-      lang === 'fra' ||
-      lang === 'fre' ||
-      lang === 'fr' ||
-      lang.startsWith('fr-');
+      lang === 'fra';
 
     if (!isFrench) {
       return name;
@@ -185,6 +182,13 @@ export class TVDBClient {
     }
     if (translation.overview) {
       series.overview = translation.overview;
+    }
+
+    // Apply locale-specific adjustments to season names (e.g., "Season" -> "Saison" in French)
+    if (series.seasons && series.seasons.length > 0) {
+      series.seasons.forEach((season) => {
+        season.name = this.localizeSeasonName(season.name);
+      });
     }
 
     return series;

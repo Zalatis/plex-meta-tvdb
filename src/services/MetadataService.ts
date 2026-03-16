@@ -61,6 +61,22 @@ export class MetadataService {
   }
 
   /**
+   * Localize season display titles before returning them to Plex.
+   * Mirrors the behavior in TVDBMapper (e.g., "Season" -> "Saison" for French).
+   */
+  private localizeSeasonTitle(title: string): string {
+    const lang = (process.env.TVDB_LANGUAGE || 'eng').toLowerCase();
+    const isFrench =
+      lang === 'fra';
+
+    if (!isFrench) {
+      return title;
+    }
+
+    return title.replace(/\bSeason\b/gi, 'Saison');
+  }
+
+  /**
    * Parse ratingKey to extract metadata type and IDs
    * Format examples:
    * - tvdb-show-15260
@@ -229,12 +245,17 @@ export class MetadataService {
     const showGuid = `${TV_PROVIDER_IDENTIFIER}://show/tvdb-show-${seriesId}`;
     const seasonGuid = `${TV_PROVIDER_IDENTIFIER}://season/tvdb-season-${seriesId}-${seasonNumber}`;
 
+    const rawSeasonTitle =
+      (await this.tvdbClient.getSeasonByNumber(seriesId, seasonNumber, seasonType || 'default'))?.name ||
+      `Season ${seasonNumber}`;
+    const seasonTitle = this.localizeSeasonTitle(rawSeasonTitle);
+
     const episodeMetadata = this.mapper.mapEpisode(
       episodeDetails,
       seriesId,
       seriesDetails.name,
       showGuid,
-      `Season ${seasonNumber}`,
+      seasonTitle,
       seasonGuid,
       seriesDetails.image || undefined,
       undefined
@@ -324,7 +345,9 @@ export class MetadataService {
 
         if (season) {
           const seasonArtworks = await this.tvdbClient.getSeasonArtworks(season.id);
-          images.push(...this.mapper.mapAllImages(seasonArtworks, `${seriesDetails.name} - Season ${parsed.seasonNumber}`));
+          const rawSeasonTitle = season.name || `Season ${parsed.seasonNumber}`;
+          const seasonTitle = this.localizeSeasonTitle(rawSeasonTitle);
+          images.push(...this.mapper.mapAllImages(seasonArtworks, `${seriesDetails.name} - ${seasonTitle}`));
         }
         break;
       }
@@ -521,20 +544,23 @@ export class MetadataService {
 
     for (const season of regularSeasons) {
       const seasonDetails = await this.tvdbClient.getSeasonDetails(season.id);
-      const seasonGuid = `${TV_PROVIDER_IDENTIFIER}://season/tvdb-season-${parsed.seriesId}-${season.number}`;
+        const seasonGuid = `${TV_PROVIDER_IDENTIFIER}://season/tvdb-season-${parsed.seriesId}-${season.number}`;
 
-      const episodes = seasonDetails.episodes?.map((episode) =>
-        this.mapper.mapEpisode(
-          episode,
-          parsed.seriesId,
-          seriesDetails.name,
-          showGuid,
-          season.name || `Season ${season.number}`,
-          seasonGuid,
-          seriesDetails.image || undefined,
-          season.image || undefined
-        )
-      ) || [];
+        const rawSeasonTitle = season.name || `Season ${season.number}`;
+        const seasonTitle = this.localizeSeasonTitle(rawSeasonTitle);
+
+        const episodes = seasonDetails.episodes?.map((episode) =>
+          this.mapper.mapEpisode(
+            episode,
+            parsed.seriesId,
+            seriesDetails.name,
+            showGuid,
+            seasonTitle,
+            seasonGuid,
+            seriesDetails.image || undefined,
+            season.image || undefined
+          )
+        ) || [];
 
       allEpisodes.push(...episodes);
     }

@@ -45,6 +45,22 @@ export class TVDBMapper {
   }
 
   /**
+   * Localize season-related titles before returning them to Plex.
+   * Currently: replace English "Season" with French "Saison" when TVDB_LANGUAGE is French.
+   */
+  private localizeSeasonTitle(title: string): string {
+    const lang = (process.env.TVDB_LANGUAGE || 'eng').toLowerCase();
+    const isFrench =
+      lang === 'fra';
+
+    if (!isFrench) {
+      return title;
+    }
+
+    return title.replace(/\bSeason\b/gi, 'Saison');
+  }
+
+  /**
    * Map TVDB artworks to Plex Image array
    * Only includes one image of each type
    */
@@ -403,7 +419,7 @@ export class TVDBMapper {
       ratingKey,
       key: constructMetadataKeyWithChildren(ratingKey),
       guid: constructGuid(TV_PROVIDER_IDENTIFIER, 'season', ratingKey),
-      title: season.name || `Season ${season.number}`,
+      title: this.localizeSeasonTitle(season.name || `Season ${season.number}`),
       originallyAvailableAt: '', // TVDB seasons don't have air dates at the season level
       index: season.number,
       parentRatingKey,
@@ -425,14 +441,17 @@ export class TVDBMapper {
       metadata.Image = [{
         type: 'coverPoster',
         url: season.image,
-        alt: season.name || `Season ${season.number}`,
+        alt: this.localizeSeasonTitle(season.name || `Season ${season.number}`),
       }];
     }
 
     // Handle extended season with artwork
     const extendedSeason = season as TVDBSeasonExtended;
     if (extendedSeason.artwork && extendedSeason.artwork.length > 0) {
-      metadata.Image = this.mapImages(extendedSeason.artwork, season.name || `Season ${season.number}`);
+      metadata.Image = this.mapImages(
+        extendedSeason.artwork,
+        this.localizeSeasonTitle(season.name || `Season ${season.number}`)
+      );
     }
 
     // Add Children (episodes) if requested and available
@@ -446,7 +465,7 @@ export class TVDBMapper {
           seriesId,
           showTitle,
           showGuid,
-          season.name || `Season ${season.number}`,
+          this.localizeSeasonTitle(season.name || `Season ${season.number}`),
           seasonGuid,
           showThumb,
           seasonThumb

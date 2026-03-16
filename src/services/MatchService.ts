@@ -46,6 +46,22 @@ export class MatchService {
   }
 
   /**
+   * Localize season titles before returning them to Plex (e.g., "Season" -> "Saison" for French).
+   * Kept in sync with TVDBMapper/MetadataService behavior.
+   */
+  private localizeSeasonTitle(title: string): string {
+    const lang = (process.env.TVDB_LANGUAGE || 'eng').toLowerCase();
+    const isFrench =
+      lang === 'fra';
+
+    if (!isFrench) {
+      return title;
+    }
+
+    return title.replace(/\bSeason\b/gi, 'Saison');
+  }
+
+  /**
    * Parse external GUID to extract provider and ID
    */
   private parseExternalGuid(guid: string): { provider: string; id: string } | null {
@@ -335,12 +351,14 @@ export class MatchService {
           const showGuid = `${TV_PROVIDER_IDENTIFIER}://show/tvdb-show-${seriesId}`;
           const seasonGuid = `${TV_PROVIDER_IDENTIFIER}://season/tvdb-season-${seriesId}-${request.parentIndex}`;
 
+          const seasonTitle = this.localizeSeasonTitle(`Season ${request.parentIndex}`);
+
           const episodeMetadata = this.mapper.mapEpisode(
             episode,
             seriesId,
             seriesDetails.name,
             showGuid,
-            `Season ${request.parentIndex}`,
+            seasonTitle,
             seasonGuid,
             seriesDetails.image || undefined,
             undefined
@@ -361,12 +379,14 @@ export class MatchService {
           const showGuid = `${TV_PROVIDER_IDENTIFIER}://show/tvdb-show-${seriesId}`;
           const seasonGuid = `${TV_PROVIDER_IDENTIFIER}://season/tvdb-season-${seriesId}-${episode.seasonNumber}`;
 
+          const seasonTitle = this.localizeSeasonTitle(`Season ${episode.seasonNumber}`);
+
           const episodeMetadata = this.mapper.mapEpisode(
             episode,
             seriesId,
             seriesDetails.name,
             showGuid,
-            `Season ${episode.seasonNumber}`,
+            seasonTitle,
             seasonGuid,
             seriesDetails.image || undefined,
             undefined
