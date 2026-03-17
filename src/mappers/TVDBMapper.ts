@@ -414,12 +414,33 @@ export class TVDBMapper {
     const ratingKey = `tvdb-season-${seriesId}-${season.number}`;
     const parentRatingKey = `tvdb-show-${seriesId}`;
 
+    const extendedSeason = season as TVDBSeasonExtended;
+    const seasonTitle = this.localizeSeasonTitle(season.name || `Season ${season.number}`);
+
+    // Build Image array from all available artworks so Plex shows every poster/artwork
+    let allImages: Image[] = [];
+    if (extendedSeason.artwork && extendedSeason.artwork.length > 0) {
+      allImages = this.mapAllImages(extendedSeason.artwork, seasonTitle);
+    }
+    if (allImages.length === 0 && season.image) {
+      allImages = [{
+        type: 'coverPoster',
+        url: season.image,
+        alt: seasonTitle,
+      }];
+    }
+
+    // Pick default thumb (poster) and art (background) so one is automatically enabled in Plex
+    const firstPoster = allImages.find(i => i.type === 'coverPoster')?.url
+      ?? (season.image || undefined);
+    const firstBackground = allImages.find(i => i.type === 'background')?.url;
+
     const metadata: SeasonMetadata = {
       type: 'season',
       ratingKey,
       key: constructMetadataKeyWithChildren(ratingKey),
       guid: constructGuid(TV_PROVIDER_IDENTIFIER, 'season', ratingKey),
-      title: this.localizeSeasonTitle(season.name || `Season ${season.number}`),
+      title: seasonTitle,
       originallyAvailableAt: '', // TVDB seasons don't have air dates at the season level
       index: season.number,
       parentRatingKey,
@@ -428,7 +449,8 @@ export class TVDBMapper {
       parentType: 'show',
       parentTitle: showTitle,
       parentThumb: showThumb,
-      thumb: season.image || undefined,
+      thumb: firstPoster,
+      art: firstBackground,
     };
 
     // Add external IDs
@@ -436,28 +458,14 @@ export class TVDBMapper {
     guids.push({ id: createExternalGuid('tvdb', season.id) });
     metadata.Guid = guids;
 
-    // Add images
-    if (season.image) {
-      metadata.Image = [{
-        type: 'coverPoster',
-        url: season.image,
-        alt: this.localizeSeasonTitle(season.name || `Season ${season.number}`),
-      }];
-    }
-
-    // Handle extended season with artwork
-    const extendedSeason = season as TVDBSeasonExtended;
-    if (extendedSeason.artwork && extendedSeason.artwork.length > 0) {
-      metadata.Image = this.mapImages(
-        extendedSeason.artwork,
-        this.localizeSeasonTitle(season.name || `Season ${season.number}`)
-      );
+    if (allImages.length > 0) {
+      metadata.Image = allImages;
     }
 
     // Add Children (episodes) if requested and available
     if (options?.includeChildren && extendedSeason.episodes && extendedSeason.episodes.length > 0) {
       const seasonGuid = metadata.guid;
-      const seasonThumb = season.image || undefined;
+      const seasonThumb = metadata.thumb;
 
       const episodeMetadata = extendedSeason.episodes.map(episode => 
         this.mapEpisode(
@@ -579,11 +587,13 @@ export class TVDBMapper {
           imageType = 'clearLogo';
           break;
         case TVDBArtworkType.BANNER:
-          // Map banner to background since banner type doesn't exist
           imageType = 'background';
           break;
+        case TVDBArtworkType.CLEARART:
+          imageType = 'backgroundSquare';
+          break;
         default:
-          return; // Skip unknown types
+          return; // Skip unsupported types (e.g. ICON, ACTOR, CINEMAGRAPH)
       }
 
       images.push({

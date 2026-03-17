@@ -186,11 +186,8 @@ export class MetadataService {
       throw new Error(`Season ${seasonNumber} not found for series ${seriesId}`);
     }
 
-    // Get extended season details if we need children
-    let seasonDetails = season;
-    if (options.includeChildren) {
-      seasonDetails = await this.tvdbClient.getSeasonDetails(season.id);
-    }
+    // Always get extended season details so we have artwork for all posters/artworks
+    const seasonDetails = await this.tvdbClient.getSeasonDetails(season.id);
 
     const showGuid = `${TV_PROVIDER_IDENTIFIER}://show/tvdb-show-${seriesId}`;
 
