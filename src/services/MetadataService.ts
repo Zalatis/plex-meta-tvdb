@@ -151,7 +151,29 @@ export class MetadataService {
   ): Promise<MetadataResponse> {
     const seriesDetails = await this.tvdbClient.getSeriesDetails(seriesId);
 
-    const showMetadata = this.mapper.mapSeries(seriesDetails, {
+    // Plex typically reads season posters from the show children listing.
+    // TVDB's series details only include a single `season.image`, so when `includeChildren=1`
+    // we enrich each season with `/seasons/{id}/extended` to get the full `artwork` list.
+    let seriesForMapping = seriesDetails;
+    if (options.includeChildren && seriesDetails.seasons && seriesDetails.seasons.length > 0) {
+      const extendedSeasons = await Promise.all(
+        seriesDetails.seasons.map(async (s) => {
+          try {
+            return await this.tvdbClient.getSeasonDetails(s.id);
+          } catch {
+            // Fall back to basic season object if extended fetch fails
+            return s;
+          }
+        })
+      );
+
+      seriesForMapping = {
+        ...seriesDetails,
+        seasons: extendedSeasons as any,
+      };
+    }
+
+    const showMetadata = this.mapper.mapSeries(seriesForMapping, {
       includeChildren: options.includeChildren,
       country: options.country,
     });
